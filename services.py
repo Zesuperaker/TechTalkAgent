@@ -1,9 +1,11 @@
 import os
+import base64
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import HumanMessage, AIMessage
 from vector_db import query_documents, get_collection_stats
+from openai import OpenAI
 
 # Store conversation history in memory
 conversation_history = []
@@ -103,6 +105,82 @@ def chat_with_agent(user_message: str) -> str:
         return response
     except Exception as e:
         return f"Error processing message: {str(e)}"
+
+
+def get_audio_response(text_response: str) -> bytes:
+    """Convert text response to speech using gpt-audio-mini by having it read the text"""
+    try:
+        client = OpenAI(
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+            base_url="https://openrouter.ai/api/v1"
+        )
+
+        # Request audio output from the model with streaming enabled
+        # Key: Tell it to READ the text, not respond to it
+        response = client.chat.completions.create(
+            model="openai/gpt-audio-mini",
+            modalities=["text", "audio"],
+            audio={
+                "voice": "shimmer",  # options: alloy, echo, fable, onyx, nova, shimmer
+                "format": "pcm16"  # Required for streaming
+            },
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a text-to-speech assistant. Read the following text aloud exactly as written, with no changes, additions, or commentary."
+                },
+                {
+                    "role": "user",
+                    "content": f"Read this text aloud: {text_response}"
+                }
+            ],
+            max_tokens=2000,
+            stream=True  # Required for audio output
+        )
+
+        # Handle streaming response
+        audio_bytes = b""
+        for chunk in response:
+            try:
+                if hasattr(chunk, 'choices') and chunk.choices and len(chunk.choices) > 0:
+                    choice = chunk.choices[0]
+
+                    # Handle both object and dict access patterns
+                    delta = None
+                    if hasattr(choice, 'delta'):
+                        delta = choice.delta
+                    elif isinstance(choice, dict) and 'delta' in choice:
+                        delta = choice['delta']
+
+                    if delta:
+                        audio = None
+                        if hasattr(delta, 'audio'):
+                            audio = delta.audio
+                        elif isinstance(delta, dict) and 'audio' in delta:
+                            audio = delta['audio']
+
+                        if audio:
+                            audio_data = None
+                            if hasattr(audio, 'data'):
+                                audio_data = audio.data
+                            elif isinstance(audio, dict) and 'data' in audio:
+                                audio_data = audio['data']
+
+                            if audio_data:
+                                # Audio data comes base64 encoded, decode it
+                                audio_chunk = base64.b64decode(audio_data)
+                                audio_bytes += audio_chunk
+            except (AttributeError, KeyError, TypeError) as chunk_error:
+                # Skip chunks that don't have audio data
+                continue
+
+        return audio_bytes if audio_bytes else None
+
+    except Exception as e:
+        print(f"Error generating audio: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 
 def clear_conversation():

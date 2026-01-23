@@ -78,6 +78,48 @@
         background: var(--surface);
         border: 1px solid var(--border);
         color: var(--text-primary);
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .message-text {
+        word-wrap: break-word;
+    }
+
+    .audio-btn {
+        background: rgba(0, 212, 255, 0.15);
+        border: 1px solid rgba(0, 212, 255, 0.4);
+        color: var(--accent);
+        padding: 0.5rem 0.8rem;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        font-weight: 500;
+        transition: all 0.2s ease;
+        width: fit-content;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .audio-btn:hover {
+        background: rgba(0, 212, 255, 0.25);
+        border-color: rgba(0, 212, 255, 0.6);
+    }
+
+    .audio-btn:active {
+        transform: scale(0.98);
+    }
+
+    .audio-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .audio-btn.playing {
+        background: rgba(0, 212, 255, 0.25);
+        border-color: var(--accent);
     }
 
     .input-area {
@@ -115,6 +157,7 @@
         display: flex;
         align-items: center;
         gap: 0.5rem;
+        flex-direction: row !important;
     }
 
     .typing-dot {
@@ -168,6 +211,11 @@
             flex-direction: column;
             gap: 0.5rem;
         }
+
+        .audio-btn {
+            padding: 0.4rem 0.7rem;
+            font-size: 0.8rem;
+        }
     }
 </style>
 {% endblock %}
@@ -207,9 +255,70 @@
     const kbStatus = document.getElementById('kb-status');
 
     let isFirstMessage = true;
+    let currentAudio = null;
 
     function scrollToBottom() {
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    function playAudio(text, button) {
+        // Stop any currently playing audio
+        if (currentAudio) {
+            currentAudio.pause();
+        }
+
+        button.disabled = true;
+        button.textContent = '▶ Loading...';
+
+        fetch('/api/chat/audio', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ text: text })
+        })
+        .then(response => response.blob())
+        .then(blob => {
+            const audioUrl = URL.createObjectURL(blob);
+            const audio = new Audio(audioUrl);
+            currentAudio = audio;
+
+            button.textContent = '⏸ Stop';
+            button.disabled = false;
+            button.classList.add('playing');
+
+            const stopHandler = () => {
+                audio.pause();
+                audio.currentTime = 0;
+                button.textContent = '▶ Play';
+                button.classList.remove('playing');
+                button.onclick = () => playAudio(text, button);
+            };
+
+            button.onclick = stopHandler;
+
+            audio.onended = () => {
+                button.textContent = '▶ Play';
+                button.classList.remove('playing');
+                button.onclick = () => playAudio(text, button);
+            };
+
+            audio.onerror = () => {
+                button.textContent = '▶ Play';
+                button.disabled = false;
+                button.classList.remove('playing');
+                button.onclick = () => playAudio(text, button);
+            };
+
+            audio.play();
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            button.textContent = '▶ Play';
+            button.disabled = false;
+            button.classList.remove('playing');
+            button.onclick = () => playAudio(text, button);
+        });
     }
 
     function addMessage(text, isUser) {
@@ -218,7 +327,20 @@
 
         const bubble = document.createElement('div');
         bubble.className = 'message-bubble';
-        bubble.textContent = text;
+
+        const textDiv = document.createElement('div');
+        textDiv.className = 'message-text';
+        textDiv.textContent = text;
+        bubble.appendChild(textDiv);
+
+        // Add audio button for assistant messages
+        if (!isUser) {
+            const audioBtn = document.createElement('button');
+            audioBtn.className = 'audio-btn';
+            audioBtn.textContent = '▶ Play';
+            audioBtn.onclick = () => playAudio(text, audioBtn);
+            bubble.appendChild(audioBtn);
+        }
 
         messageDiv.appendChild(bubble);
 
@@ -299,6 +421,12 @@
     }
 
     function resetChat() {
+        // Stop any playing audio
+        if (currentAudio) {
+            currentAudio.pause();
+            currentAudio = null;
+        }
+
         // Call backend to clear conversation history
         fetch('/api/chat/clear', {
             method: 'POST',

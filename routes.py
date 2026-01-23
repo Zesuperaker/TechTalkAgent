@@ -1,5 +1,36 @@
-from flask import render_template, request, jsonify
-from services import chat_with_agent, process_uploaded_text, get_kb_status, clear_conversation
+from flask import render_template, request, jsonify, send_file
+from services import chat_with_agent, process_uploaded_text, get_kb_status, clear_conversation, get_audio_response
+from io import BytesIO
+import struct
+
+
+def wrap_pcm_as_wav(pcm_data: bytes, sample_rate: int = 24000, channels: int = 1) -> bytes:
+    """Wrap raw PCM16 audio data with WAV header so it can be played in browsers"""
+    if not pcm_data:
+        return None
+
+    bytes_per_sample = 2  # 16-bit = 2 bytes
+    byte_rate = sample_rate * channels * bytes_per_sample
+    block_align = channels * bytes_per_sample
+    subchunk2_size = len(pcm_data)
+    chunk_size = 36 + subchunk2_size
+
+    # Build WAV header
+    wav_header = b'RIFF'
+    wav_header += struct.pack('<I', chunk_size)
+    wav_header += b'WAVE'
+    wav_header += b'fmt '
+    wav_header += struct.pack('<I', 16)  # Subchunk1Size
+    wav_header += struct.pack('<H', 1)  # AudioFormat (1 = PCM)
+    wav_header += struct.pack('<H', channels)
+    wav_header += struct.pack('<I', sample_rate)
+    wav_header += struct.pack('<I', byte_rate)
+    wav_header += struct.pack('<H', block_align)
+    wav_header += struct.pack('<H', 16)  # BitsPerSample
+    wav_header += b'data'
+    wav_header += struct.pack('<I', subchunk2_size)
+
+    return wav_header + pcm_data
 
 
 def register_routes(app):
@@ -36,6 +67,32 @@ def register_routes(app):
             'response': response,
             'success': True
         })
+
+    @app.route('/api/chat/audio', methods=['POST'])
+    def api_chat_audio():
+        """API endpoint to get audio version of text response"""
+        data = request.json
+        text = data.get('text', '')
+
+        if not text.strip():
+            return jsonify({'error': 'Empty text'}), 400
+
+        try:
+            audio_bytes = get_audio_response(text)
+
+            if not audio_bytes:
+                return jsonify({'error': 'Failed to generate audio'}), 500
+
+            # Wrap PCM16 in WAV container so browser can play it
+            wav_data = wrap_pcm_as_wav(audio_bytes)
+
+            return send_file(
+                BytesIO(wav_data),
+                mimetype='audio/wav',
+                as_attachment=False
+            )
+        except Exception as e:
+            return jsonify({'error': str(e)}), 400
 
     @app.route('/api/chat/clear', methods=['POST'])
     def api_clear_chat():
