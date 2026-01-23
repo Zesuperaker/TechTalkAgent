@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+
+{% block title %}Chat - Knowledge Base Agent{% endblock %}
+
+{% block extra_css %}
+<style>
+    .chat-container {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        max-width: 900px;
+        margin: 0 auto;
+    }
+
+    .messages {
+        flex: 1;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        padding-right: 0.5rem;
+    }
+
+    .messages::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .messages::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .messages::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 3px;
+    }
+
+    .message {
+        display: flex;
+        animation: slideIn 0.3s ease-out;
+    }
+
+    @keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .message.user {
+        justify-content: flex-end;
+    }
+
+    .message.assistant {
+        justify-content: flex-start;
+    }
+
+    .message-bubble {
+        max-width: 70%;
+        padding: 1rem 1.25rem;
+        border-radius: 12px;
+        line-height: 1.5;
+        word-wrap: break-word;
+        font-size: 0.95rem;
+    }
+
+    .message.user .message-bubble {
+        background: var(--accent);
+        color: #000;
+        font-weight: 500;
+    }
+
+    .message.assistant .message-bubble {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        color: var(--text-primary);
+    }
+
+    .input-area {
+        display: flex;
+        gap: 1rem;
+        margin-top: auto;
+    }
+
+    .input-area input {
+        flex: 1;
+    }
+
+    .kb-info {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        padding: 1rem;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-size: 0.9rem;
+        align-items: center;
+    }
+
+    .kb-info-label {
+        color: var(--text-secondary);
+    }
+
+    .kb-info-value {
+        color: var(--accent);
+        font-weight: 500;
+    }
+
+    .loading {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .typing-dot {
+        display: inline-block;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--accent);
+        animation: typing 1.4s infinite;
+    }
+
+    .typing-dot:nth-child(2) {
+        animation-delay: 0.2s;
+    }
+
+    .typing-dot:nth-child(3) {
+        animation-delay: 0.4s;
+    }
+
+    @keyframes typing {
+        0%, 60%, 100% {
+            opacity: 0.3;
+            transform: translateY(0);
+        }
+        30% {
+            opacity: 1;
+            transform: translateY(-8px);
+        }
+    }
+
+    .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: var(--text-secondary);
+        text-align: center;
+    }
+
+    .empty-state p {
+        margin-bottom: 0.5rem;
+    }
+
+    @media (max-width: 768px) {
+        .message-bubble {
+            max-width: 90%;
+        }
+
+        .kb-info {
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="chat-container">
+    <div class="kb-info">
+        <span class="kb-info-label">Knowledge Base:</span>
+        <span class="kb-info-value" id="kb-status">Loading...</span>
+    </div>
+
+    <div class="messages" id="messages">
+        <div class="empty-state">
+            <p>Start a conversation</p>
+            <p style="font-size: 0.85rem;">Ask questions about your uploaded documents</p>
+        </div>
+    </div>
+
+    <div class="input-area">
+        <input
+            type="text"
+            id="message-input"
+            placeholder="Ask a question..."
+            autocomplete="off"
+        >
+        <button id="send-btn">Send</button>
+        <button id="refresh-btn" style="background: transparent; border: 1px solid var(--accent); color: var(--accent); min-width: 100px;">New Chat</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const messagesContainer = document.getElementById('messages');
+    const messageInput = document.getElementById('message-input');
+    const sendBtn = document.getElementById('send-btn');
+    const kbStatus = document.getElementById('kb-status');
+
+    let isFirstMessage = true;
+
+    function scrollToBottom() {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    function addMessage(text, isUser) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${isUser ? 'user' : 'assistant'}`;
+
+        const bubble = document.createElement('div');
+        bubble.className = 'message-bubble';
+        bubble.textContent = text;
+
+        messageDiv.appendChild(bubble);
+
+        if (isFirstMessage) {
+            messagesContainer.innerHTML = '';
+            isFirstMessage = false;
+        }
+
+        messagesContainer.appendChild(messageDiv);
+        scrollToBottom();
+    }
+
+    function addLoadingMessage() {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message assistant';
+
+        const bubble = document.createElement('div');
+        bubble.className = 'message-bubble loading';
+        bubble.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
+
+        messageDiv.appendChild(bubble);
+        messageDiv.id = 'loading-message';
+        messagesContainer.appendChild(messageDiv);
+        scrollToBottom();
+    }
+
+    function removeLoadingMessage() {
+        const loadingMsg = document.getElementById('loading-message');
+        if (loadingMsg) {
+            loadingMsg.remove();
+        }
+    }
+
+    async function updateKBStatus() {
+        try {
+            const response = await fetch('/api/kb-status');
+            const data = await response.json();
+            const statusText = data.documents > 0
+                ? `${data.documents} documents`
+                : 'Empty - Upload documents to get started';
+            kbStatus.textContent = statusText;
+        } catch (error) {
+            kbStatus.textContent = 'Error loading status';
+        }
+    }
+
+    async function sendMessage() {
+        const message = messageInput.value.trim();
+        if (!message) return;
+
+        addMessage(message, true);
+        messageInput.value = '';
+        messageInput.focus();
+
+        addLoadingMessage();
+
+        try {
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ message: message })
+            });
+
+            const data = await response.json();
+            removeLoadingMessage();
+
+            if (response.ok) {
+                addMessage(data.response, false);
+            } else {
+                addMessage('Error: ' + (data.error || 'Failed to get response'), false);
+            }
+        } catch (error) {
+            removeLoadingMessage();
+            addMessage('Error: ' + error.message, false);
+        }
+    }
+
+    function resetChat() {
+        // Call backend to clear conversation history
+        fetch('/api/chat/clear', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Clear UI
+            messagesContainer.innerHTML = `
+                <div class="empty-state">
+                    <p>Hi, I'm the group 31 tech talk agent</p>
+                    <p style="font-size: 0.85rem;">Ask any questions you have about lang chain</p>
+                </div>
+            `;
+            messageInput.value = '';
+            messageInput.focus();
+            isFirstMessage = true;
+        })
+        .catch(error => console.error('Error clearing chat:', error));
+    }
+
+    const refreshBtn = document.getElementById('refresh-btn');
+    refreshBtn.addEventListener('click', resetChat);
+
+    sendBtn.addEventListener('click', sendMessage);
+    messageInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            sendMessage();
+        }
+    });
+
+    // Update KB status on load
+    updateKBStatus();
+    setInterval(updateKBStatus, 5000);
+</script>
+{% endblock %}

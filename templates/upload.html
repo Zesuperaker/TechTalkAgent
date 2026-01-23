@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+
+{% block title %}Upload - Knowledge Base Agent{% endblock %}
+
+{% block extra_css %}
+<style>
+    .upload-container {
+        max-width: 800px;
+        margin: 0 auto;
+    }
+
+    .upload-section {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+    }
+
+    .upload-section h2 {
+        font-size: 1.25rem;
+        margin-bottom: 1.5rem;
+        font-weight: 500;
+        letter-spacing: 0.3px;
+    }
+
+    .kb-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    .stat-card {
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 1.25rem;
+        text-align: center;
+    }
+
+    .stat-value {
+        font-size: 2rem;
+        font-weight: 600;
+        color: var(--accent);
+        margin-bottom: 0.5rem;
+    }
+
+    .stat-label {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 0.75rem;
+        font-weight: 500;
+        font-size: 0.95rem;
+    }
+
+    .form-group textarea {
+        width: 100%;
+        min-height: 300px;
+        resize: vertical;
+        font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+        font-size: 0.9rem;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 1rem;
+    }
+
+    .form-actions button {
+        flex: 1;
+    }
+
+    .form-actions button:last-child {
+        background: transparent;
+        border: 1px solid var(--accent);
+        color: var(--accent);
+    }
+
+    .form-actions button:last-child:hover {
+        background: rgba(0, 212, 255, 0.1);
+    }
+
+    .message-box {
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+        display: none;
+        animation: slideDown 0.3s ease-out;
+    }
+
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .message-box.show {
+        display: block;
+    }
+
+    .message-box.success {
+        background: rgba(0, 212, 255, 0.1);
+        border: 1px solid rgba(0, 212, 255, 0.3);
+        color: var(--accent);
+    }
+
+    .message-box.error {
+        background: rgba(255, 77, 77, 0.1);
+        border: 1px solid rgba(255, 77, 77, 0.3);
+        color: #ff4d4d;
+    }
+
+    .loading-indicator {
+        display: none;
+        color: var(--accent);
+    }
+
+    .loading-indicator.show {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .loading-dot {
+        display: inline-block;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--accent);
+        animation: typing 1.4s infinite;
+    }
+
+    @media (max-width: 768px) {
+        .upload-section {
+            padding: 1.5rem;
+        }
+
+        .kb-stats {
+            grid-template-columns: 1fr;
+        }
+
+        .form-actions {
+            flex-direction: column;
+        }
+
+        .form-group textarea {
+            min-height: 200px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="upload-container">
+    <div class="kb-stats">
+        <div class="stat-card">
+            <div class="stat-value" id="doc-count">{{ kb_status.documents }}</div>
+            <div class="stat-label">Documents</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="kb-health">{{ kb_status.status }}</div>
+            <div class="stat-label">Status</div>
+        </div>
+    </div>
+
+    <div id="message-box" class="message-box"></div>
+
+    <div class="upload-section">
+        <h2>Add to Knowledge Base</h2>
+        
+        <form id="upload-form">
+            <div class="form-group">
+                <label for="text-input">Paste your text content here</label>
+                <textarea 
+                    id="text-input" 
+                    placeholder="Paste documents, articles, or any text content you want to add to the knowledge base. Content will be automatically chunked and indexed."
+                    required
+                ></textarea>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" id="upload-btn">
+                    <span class="loading-indicator" id="loading-indicator">
+                        <span class="loading-dot"></span>
+                    </span>
+                    <span id="btn-text">Upload</span>
+                </button>
+                <button type="reset">Clear</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const uploadForm = document.getElementById('upload-form');
+    const textInput = document.getElementById('text-input');
+    const uploadBtn = document.getElementById('upload-btn');
+    const messageBox = document.getElementById('message-box');
+    const loadingIndicator = document.getElementById('loading-indicator');
+    const btnText = document.getElementById('btn-text');
+    const docCount = document.getElementById('doc-count');
+    const kbHealth = document.getElementById('kb-health');
+
+    function showMessage(text, type) {
+        messageBox.className = `message-box show ${type}`;
+        messageBox.textContent = text;
+    }
+
+    function hideMessage() {
+        messageBox.classList.remove('show');
+    }
+
+    async function updateStats() {
+        try {
+            const response = await fetch('/api/kb-status');
+            const data = await response.json();
+            docCount.textContent = data.documents;
+            kbHealth.textContent = data.status;
+        } catch (error) {
+            console.error('Error updating stats:', error);
+        }
+    }
+
+    uploadForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const text = textInput.value.trim();
+        if (!text) {
+            showMessage('Please enter some content', 'error');
+            return;
+        }
+
+        uploadBtn.disabled = true;
+        loadingIndicator.classList.add('show');
+        btnText.textContent = 'Uploading...';
+
+        try {
+            const response = await fetch('/api/upload', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ text: text })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                showMessage(data.message, 'success');
+                uploadForm.reset();
+                await updateStats();
+            } else {
+                showMessage('Error: ' + (data.message || 'Upload failed'), 'error');
+            }
+        } catch (error) {
+            showMessage('Error: ' + error.message, 'error');
+        } finally {
+            uploadBtn.disabled = false;
+            loadingIndicator.classList.remove('show');
+            btnText.textContent = 'Upload';
+        }
+    });
+
+    // Update stats on load
+    updateStats();
+</script>
+{% endblock %}

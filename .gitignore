@@ -1,0 +1,7 @@
+/.env
+/.venv1/
+/venv1/
+/__pycache__/
+*.pyc
+/chroma_data/
+/kb_store/
