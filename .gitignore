@@ -5,3 +5,4 @@
 *.pyc
 /chroma_data/
 /kb_store/
+/.idea
