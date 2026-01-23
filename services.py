@@ -107,6 +107,51 @@ def chat_with_agent(user_message: str) -> str:
         return f"Error processing message: {str(e)}"
 
 
+def chat_with_agent_stream(user_message: str):
+    """Process user message and yield response tokens using streaming"""
+    global conversation_history
+
+    try:
+        # Get relevant context from knowledge base
+        context = get_context_from_knowledge_base(user_message)
+
+        # Format conversation history
+        history_text = ""
+        if conversation_history:
+            history_text = "Previous conversation:\n"
+            for msg in conversation_history:
+                if isinstance(msg, HumanMessage):
+                    history_text += f"User: {msg.content}\n"
+                elif isinstance(msg, AIMessage):
+                    history_text += f"Assistant: {msg.content}\n"
+            history_text += "\n"
+
+        # Create the RAG chain
+        chain = create_rag_chain()
+
+        # Stream the response
+        full_response = ""
+        for token in chain.stream({
+            "history": history_text,
+            "context": context,
+            "question": user_message
+        }):
+            full_response += token
+            yield token
+
+        # Store in conversation history after streaming completes
+        conversation_history.append(HumanMessage(content=user_message))
+        conversation_history.append(AIMessage(content=full_response))
+
+        # Keep history manageable (last 20 messages = 10 turn conversation)
+        if len(conversation_history) > 20:
+            conversation_history.pop(0)
+            conversation_history.pop(0)
+
+    except Exception as e:
+        yield f"Error: {str(e)}"
+
+
 def get_audio_response(text_response: str) -> bytes:
     """Convert text response to speech using gpt-audio-mini by having it read the text"""
     try:

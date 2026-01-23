@@ -1,7 +1,8 @@
-from flask import render_template, request, jsonify, send_file
-from services import chat_with_agent, process_uploaded_text, get_kb_status, clear_conversation, get_audio_response
+from flask import render_template, request, jsonify, send_file, Response
+from services import chat_with_agent, chat_with_agent_stream, process_uploaded_text, get_kb_status, clear_conversation, get_audio_response
 from io import BytesIO
 import struct
+import json
 
 
 def wrap_pcm_as_wav(pcm_data: bytes, sample_rate: int = 24000, channels: int = 1) -> bytes:
@@ -54,19 +55,29 @@ def register_routes(app):
 
     @app.route('/api/chat', methods=['POST'])
     def api_chat():
-        """API endpoint for chat messages"""
+        """API endpoint for chat messages with streaming"""
         data = request.json
         user_message = data.get('message', '')
 
         if not user_message.strip():
             return jsonify({'error': 'Empty message'}), 400
 
-        response = chat_with_agent(user_message)
+        def generate():
+            """Generator function for streaming response"""
+            try:
+                for token in chat_with_agent_stream(user_message):
+                    yield f"data: {json.dumps({'token': token})}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
-        return jsonify({
-            'response': response,
-            'success': True
-        })
+        return Response(
+            generate(),
+            mimetype='text/event-stream',
+            headers={
+                'Cache-Control': 'no-cache',
+                'X-Accel-Buffering': 'no'
+            }
+        )
 
     @app.route('/api/chat/audio', methods=['POST'])
     def api_chat_audio():
