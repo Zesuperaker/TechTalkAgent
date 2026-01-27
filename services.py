@@ -39,7 +39,7 @@ def create_rag_chain():
 
     prompt_template = PromptTemplate(
         input_variables=["history", "context", "question"],
-        template="""{history}You are a helpful langchain assistant, called the group 31 tech talk agent. Use the following context to answer the user's question. Please answer in a concise paragraph format, do not use bullets, markdown or em dashes. Your audience is a third year business class who is learning about langchain for the first time in class. Remember the previous conversation when relevant.
+        template="""{history}You are a helpful langchain assistant, called the group 31 tech talk agent. Use the following context to answer the user's question. Please answer in a concise paragraph format, do not use bullets, markdown or em dashes. Your audience is a third year business class who is non-technical and learning about langchain for the first time in class. Remember the previous conversation when relevant.
 
 Context:
 {context}
