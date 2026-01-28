@@ -1,0 +1,1 @@
+This is a demo project for a presentation about agentic AI. It uses langchain and chromadb to allow the user to upload documents then have the agent answer using RAG search. Please note that this is a demo and would need considerable changes to be safely run in production.
